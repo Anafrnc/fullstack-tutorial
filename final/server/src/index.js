@@ -1,74 +1,112 @@
 require('dotenv').config();
 
-const { ApolloServer } = require('apollo-server');
-const isEmail = require('isemail');
+import React from 'react';
+import { render } from 'react-dom';
+import {
+  ApolloClient,
+  InMemoryCache,
+  ApolloProvider,
+  useQuery,
+  gql
+} from "@apollo/client";
 
-const typeDefs = require('./schema');
-const resolvers = require('./resolvers');
-const { createStore } = require('./utils');
+const EXCHANGE_RATES = gql`
+  query GetExchangeRates {
+    rates(currency: "USD") {
+      currency
+      rate
+    }
+  }
+`;
 
-const LaunchAPI = require('./datasources/launch');
-const UserAPI = require('./datasources/user');
+client
+  .query({
+    query: gql`
+      query GetRates {
+        rates(currency: "USD") {
+          currency
+        }
+      }
+    `
+  })
+  .then(result => console.log(result));
 
-const internalEngineDemo = require('./engine-demo');
+function ExchangeRates() {
+  const { loading, error, data } = useQuery(EXCHANGE_RATES);
 
-// creates a sequelize connection once. NOT for every request
-const store = createStore();
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Error :(</p>;
 
-// set up any dataSources our resolvers need
-const dataSources = () => ({
-  launchAPI: new LaunchAPI(),
-  userAPI: new UserAPI({ store }),
-});
-
-// the function that sets up the global context for each resolver, using the req
-const context = async ({ req }) => {
-  // simple auth check on every request
-  const auth = (req.headers && req.headers.authorization) || '';
-  const email = new Buffer(auth, 'base64').toString('ascii');
-
-  // if the email isn't formatted validly, return null for user
-  if (!isEmail.validate(email)) return { user: null };
-  // find a user by their email
-  const users = await store.users.findOrCreate({ where: { email } });
-  const user = users && users[0] ? users[0] : null;
-
-  return { user };
-};
-
-// Set up Apollo Server
-const server = new ApolloServer({
-  typeDefs,
-  resolvers,
-  dataSources,
-  context,
-  introspection: true,
-  playground: true,
-  engine: {
-    apiKey: process.env.ENGINE_API_KEY,
-    ...internalEngineDemo,
-  },
-});
-
-// Start our server if we're not in a test env.
-// if we're in a test env, we'll manually start it in a test
-if (process.env.NODE_ENV !== 'test') {
-  server
-    .listen({ port: process.env.PORT || 4000 })
-    .then(({ url }) => {
-      console.log(`🚀 app running at ${url}`)
-    });
+  return data.rates.map(({ currency, rate }) => (
+    <div key={currency}>
+      <p>
+        {currency}: {rate}
+      </p>
+    </div>
+  ));
 }
 
-// export all the important pieces for integration/e2e tests to use
-module.exports = {
-  dataSources,
-  context,
-  typeDefs,
-  resolvers,
-  ApolloServer,
-  LaunchAPI,
-  UserAPI,
-  store,
-  server,
+function App() {
+  return (
+    <ApolloProvider client={client}>
+      <div>
+        <h2>My first Apollo app 🚀</h2>
+        <ExchangeRates />
+      </div>
+    </ApolloProvider>
+  );
+}
+render(<App />, document.getElementById('root'));
+
+
+const client = new ApolloClient({
+  uri: 'https://48p1r2roz4.sse.codesandbox.io',
+  cache: new InMemoryCache()
+});
+
+
+const Missions = gql`
+  query getFiveMissions {
+    launches(limit: 5) {
+      id
+      launch_date_utc
+      launch_success
+      rocket {
+        rocket_name
+      }
+      links {
+        video_link
+      }
+      details
+    }
+  }
+`;
+
+const Launch = () => {
+  const { loading, error, data } = useQuery(Missions);
+
+  if (loading) return <p>Loading</p>;
+  if (error) return <p>Error {error}</p>;
+
+  return data.launches.map((launch) => (
+    <div key={launch.id}>
+      <h5>Launch: #{launch.id}</h5>
+      <p>{launch.details}</p>
+      <p>Rocket: {launch.rocket.rocket_name}</p>
+      <a href={launch.links.video_link}>link</a>
+    </div>
+  ));
 };
+
+function App() {
+  return (
+    <ApolloProvider client={client}>
+      <div className="App">
+        <h2>My first Apollo app 🚀</h2>
+        <Launch />
+      </div>
+    </ApolloProvider>
+  );
+}
+
+render(<App />, document.getElementById("root"));
